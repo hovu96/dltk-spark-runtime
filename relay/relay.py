@@ -12,6 +12,8 @@ import sys
 import socketserver
 import json
 import asyncio
+from guppy import hpy
+import gc
 
 
 class HTTPServer(object):
@@ -46,20 +48,22 @@ class HTTPSource(HTTPServer):
         self.lock = threading.Lock()
         super().__init__(8888)
 
+    def push(self):
+        logging.info("received events json but no cache")
+        chunk = request.get_json(cache=False)
+        self.lock.acquire()
+        self.total += len(chunk)
+        self.lock.release()
+        logging.info("received %s events (total=%s)" % (len(chunk), self.total))
+        self.queue.put(chunk)
+        return '', http.HTTPStatus.OK
+
     def register_routes(self, app):
+
+        app.add_url_rule('/push', view_func=self.push, methods=["POST"])
 
         @app.route('/ping', methods=['GET'])
         def ping():
-            return '', http.HTTPStatus.OK
-
-        @app.route('/push', methods=['POST'])
-        def push():
-            chunk = request.get_json()
-            self.lock.acquire()
-            self.total += len(chunk)
-            self.lock.release()
-            logging.info("received %s events (total=%s)" % (len(chunk), self.total))
-            self.queue.put(chunk)
             return '', http.HTTPStatus.OK
 
         @app.route('/done', methods=['PUT'])
@@ -107,7 +111,7 @@ class HTTPSink(HTTPServer):
             self.lock.release()
             logging.info("sent %s events (total=%s)" % (len(chunk), self.total))
 
-            #logging.info("pull -> CHUNK (%s events)" % len(chunk))
+            # logging.info("pull -> CHUNK (%s events)" % len(chunk))
             # for e in chunk:
             #    logging.info("  %s" % e)
             queue.task_done()
@@ -148,6 +152,8 @@ class TCPSink(object):
 
 
 if __name__ == "__main__":
+    # h = hpy()
+
     logging.basicConfig(
         level=os.environ.get("LOGLEVEL", "INFO"),
         format='%(asctime)s %(levelname)-8s %(message)s',
@@ -176,4 +182,5 @@ if __name__ == "__main__":
     # signal.signal(signal.SIGKILL, signal_handler)
 
     while True:
+        # logging.info("%s", h.heap())
         time.sleep(30)
