@@ -35,14 +35,12 @@ def receive_events_generator(relay_url):
             if response.getcode() == 204:
                 time.sleep(1)
             else:
-                response_content_type = response.headers["Content-Type"] if "Content-Type" in response.headers else ""
-                if response_content_type != "application/json":
-                    raise Exception("Unexpected content type: %s" % response_content_type)
+                #response_content_type = response.headers["Content-Type"] if "Content-Type" in response.headers else ""
+                #if response_content_type != "application/json":
+                #    raise Exception("Unexpected content type: %s" % response_content_type)
                 response_bytes = response.read()
-                decoded_response = response_bytes.decode("utf-8")
-                events_chunk = json.loads(decoded_response)
-                logging.info("received %s events in chunk" % len(events_chunk))
-                yield events_chunk
+                logging.info("received %s events in chunk" % len(response_bytes))
+                yield response_bytes
         except http.client.RemoteDisconnected as e:
             raise Exception("Inbound relay closed connection: %s" % e)
         except urllib.error.HTTPError as e:
@@ -135,6 +133,9 @@ if __name__ == "__main__":
         level=os.environ.get("LOGLEVEL", "INFO"),
         format='%(asctime)s %(levelname)-8s %(message)s',
     )
+
+    search_id = os.getenv("DLTK_SEARCH_ID", "")
+    logging.info("DLTK_SEARCH_ID=%s" % search_id)
 
     algo_name = os.getenv("DLTK_ALGO", "DLTK")
     logging.info("DLTK_ALGO=%s" % algo_name)

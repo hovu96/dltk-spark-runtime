@@ -49,13 +49,20 @@ class HTTPSource(HTTPServer):
         super().__init__(8888)
 
     def push(self):
-        logging.info("received events json but no cache")
+        data = request.data
+        self.lock.acquire()
+        self.total += len(data)
+        self.lock.release()
+        logging.info("received %s bytes (total=%s)" % (len(data), self.total))
+        self.queue.put(data)
+        return '', http.HTTPStatus.OK
         chunk = request.get_json(cache=False)
         self.lock.acquire()
         self.total += len(chunk)
         self.lock.release()
         logging.info("received %s events (total=%s)" % (len(chunk), self.total))
         self.queue.put(chunk)
+        del chunk
         return '', http.HTTPStatus.OK
 
     def register_routes(self, app):
@@ -109,13 +116,14 @@ class HTTPSink(HTTPServer):
             self.lock.acquire()
             self.total += len(chunk)
             self.lock.release()
-            logging.info("sent %s events (total=%s)" % (len(chunk), self.total))
+            logging.info("sent %s bytes (total=%s)" % (len(chunk), self.total))
 
             # logging.info("pull -> CHUNK (%s events)" % len(chunk))
             # for e in chunk:
             #    logging.info("  %s" % e)
             queue.task_done()
-            return jsonify(chunk)
+            return chunk, 200
+            # jsonify(chunk)
 
 
 class TCPSinkHandler(socketserver.StreamRequestHandler):
