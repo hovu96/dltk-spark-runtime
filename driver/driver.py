@@ -22,8 +22,7 @@ app = Flask(__name__)
 #    return jsonify(algo_result)
 
 
-def receive_events(relay_url):
-    all_events = []
+def receive_events_generator(relay_url):
     pull_url = urllib.parse.urljoin(relay_url, "pull")
     while True:
         try:
@@ -43,13 +42,20 @@ def receive_events(relay_url):
                 decoded_response = response_bytes.decode("utf-8")
                 events_chunk = json.loads(decoded_response)
                 logging.info("received %s events in chunk" % len(events_chunk))
-                all_events.extend(events_chunk)
+                yield events_chunk
         except http.client.RemoteDisconnected as e:
             raise Exception("Inbound relay closed connection: %s" % e)
         except urllib.error.HTTPError as e:
             if e.code == 410:
-                return all_events
+                return
             raise Exception("Inbound relay HTTP error: %s" % e.code)
+
+
+def receive_events(relay_url):
+    all_events = []
+    for events in receive_events_generator(relay_url):
+        all_events.extend(events)
+    return all_events
 
 
 def wait_for_relay(relay_url):
@@ -162,6 +168,17 @@ if __name__ == "__main__":
         logging.info("sent %s events to outbound relay" % len(output_events))
         close_output(outbound_relay_source_url)
         spark_context.stop()
+    elif input_mode == "iterating":
+        wait_for_relay(inbound_relay_sink_url)
+        event_list_iterator = receive_events_generator(inbound_relay_sink_url)
+        logging.info("calling algo method \"%s\"..." % algo_method_name)
+        output_events = method_impl(spark_context, event_list_iterator)
+        logging.info("algo returned %s events" % len(output_events))
+        wait_for_relay(outbound_relay_source_url)
+        output_chunk(outbound_relay_source_url, output_events)
+        logging.info("sent %s events to outbound relay" % len(output_events))
+        close_output(outbound_relay_source_url)
+        spark_context.stop()
     elif input_mode == "streaming":
         batch_interval = int(os.getenv("DLTK_BATCH_INTERVAL", 1))
         logging.info("DLTK_BATCH_INTERVAL=%s" % batch_interval)
@@ -188,28 +205,28 @@ if __name__ == "__main__":
         wait_for_relay(inbound_relay_sink_url)
         wait_for_relay(outbound_relay_source_url)
         streaming_context.start()
-
-        def background_poller():
+        def wait_until_all_events_received():
             while True:
                 time.sleep(1)
                 status = get_status(inbound_relay_sink_url)
-                #logging.info("status: %s" % status)
                 if status == 410:
                     logging.info("queue status DONE")
-                    # pass
                     break
-                # else:
+        def background_poller():
+            wait_until_all_events_received()
             logging.info("waiting to finish up...")
             time.sleep(wait_time_before_stop)
             logging.info("stopping context...")
             streaming_context.stop(stopSparkContext=False, stopGraceFully=True)
-        background_poller_thread = threading.Thread(target=background_poller, args=())
-        background_poller_thread.daemon = True
-        background_poller_thread.start()
-
-        streaming_context.awaitTermination()
-
+        #background_poller_thread = threading.Thread(target=background_poller, args=())
+        #background_poller_thread.daemon = True
+        # background_poller_thread.start()
+        # streaming_context.awaitTermination()
+        wait_until_all_events_received()
+        logging.info("waiting to finish up...")
+        time.sleep(wait_time_before_stop)
+        logging.info("stopping context...")
+        streaming_context.stop(stopSparkContext=True, stopGraceFully=True)
         close_output(outbound_relay_source_url)
-
     else:
         logging.error("unsupported processing mode")

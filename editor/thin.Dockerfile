@@ -19,6 +19,11 @@ ENV DLTK_LIB_DIR $DLTK_DIR/libs
 COPY lib/ $DLTK_LIB_DIR/
 RUN mkdir -p $DLTK_LIB_DIR
 
+# configure pyspark
+ENV PYSPARK_PYTHON /usr/bin/python3
+ENV PYSPARK_DRIVER_PYTHON /usr/bin/python3
+ENV DLTK_EDITOR 1
+
 # jupyter editor
 ENV EDITOR_PATH $DLTK_DIR/editor
 RUN mkdir -p $EDITOR_PATH
