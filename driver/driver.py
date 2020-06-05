@@ -169,9 +169,13 @@ if __name__ == "__main__":
         logging.info("DLTK_RECEIVER_COUNT=%s" % receiver_count)
         wait_time_before_stop = int(os.getenv("DLTK_WAIT_TIME_BEFORE_STOP", 30))
         logging.info("DLTK_WAIT_TIME_BEFORE_STOP=%s" % wait_time_before_stop)
+        checkpoint_url = os.getenv("DLTK_CHECKPOINT_URL", "")
+        logging.info("DLTK_CHECKPOINT_URL=%s" % checkpoint_url)
         # https://spark.apache.org/docs/latest/streaming-programming-guide.html
         # https://spark.apache.org/docs/latest/api/python/pyspark.streaming.html#pyspark.streaming.StreamingContext
         streaming_context = StreamingContext(spark_context, batch_interval)
+        if checkpoint_url:
+            streaming_context.checkpoint(checkpoint_url)
         input_streams = []
         for i in range(receiver_count):
             logging.info("create new receiver")
