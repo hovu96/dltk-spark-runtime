@@ -39,7 +39,7 @@ def receive_events_generator(relay_url):
                 #if response_content_type != "application/json":
                 #    raise Exception("Unexpected content type: %s" % response_content_type)
                 response_bytes = response.read()
-                logging.info("received %s events in chunk" % len(response_bytes))
+                logging.info("received chunk of %s bytes" % len(response_bytes))
                 yield response_bytes
         except http.client.RemoteDisconnected as e:
             raise Exception("Inbound relay closed connection: %s" % e)
