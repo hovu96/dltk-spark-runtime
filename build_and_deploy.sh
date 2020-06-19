@@ -17,3 +17,11 @@ docker push hovu96/dltk-spark-runtime:driver-proxy
 # relay
 docker build --rm -f "./relay/Dockerfile" -t hovu96/dltk-spark-runtime:relay .
 docker push hovu96/dltk-spark-runtime:relay
+
+# inbound-relay
+docker build --rm -f "./inbound-relay/Dockerfile" -t hovu96/dltk-spark-runtime:inbound-relay .
+docker push hovu96/dltk-spark-runtime:inbound-relay
+
+# inbound-relay
+docker build --rm -f "./inbound-relay/Dockerfile" -t hovu96/dltk-spark-runtime:inbound-relay .
+docker push hovu96/dltk-spark-runtime:inbound-relay
