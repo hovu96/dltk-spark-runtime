@@ -14,6 +14,7 @@ import json
 import asyncio
 from guppy import hpy
 import gc
+import hdfs
 
 
 class HTTPServer(object):
@@ -41,11 +42,19 @@ class HTTPServer(object):
 
 class HTTPSource(HTTPServer):
 
-    def __init__(self, queue, done):
+    def __init__(self, queue, done, hdfs_sink_url, hdfs_path):
         self.queue = queue
         self.done = done
         self.total = 0
+        self.buffer_index = 0
         self.lock = threading.Lock()
+        self.hdfs_path = hdfs_path
+        if hdfs_sink_url:
+            self.hdfs_sink_client = hdfs.InsecureClient(hdfs_sink_url)
+            self.hdfs_sink_client.delete(self.hdfs_path, recursive=True)
+            self.hdfs_sink_client.makedirs(self.hdfs_path)
+        else:
+            self.hdfs_sink_client = None
         super().__init__(8888)
 
     def push(self):
@@ -54,7 +63,15 @@ class HTTPSource(HTTPServer):
         self.total += len(data)
         self.lock.release()
         logging.info("received %s bytes (total=%s)" % (len(data), self.total))
-        self.queue.put(data)
+        if self.hdfs_sink_client:
+            path = '%s/buffer_%s' % (self.hdfs_path, self.buffer_index)
+            with self.hdfs_sink_client.write(path) as writer:
+                writer.write(data)
+        else:
+            self.queue.put(data)
+        self.lock.acquire()
+        self.buffer_index += 1
+        self.lock.release()
         return '', http.HTTPStatus.OK
         chunk = request.get_json(cache=False)
         self.lock.acquire()
@@ -159,6 +176,31 @@ class TCPSink(object):
             server.serve_forever()
 
 
+class HDFSSink(object):
+
+    def __init__(self, queue, url):
+        self.queue = queue
+        self.url = url
+        self.thread = threading.Thread(target=self.run, args=())
+        self.thread.daemon = True
+        self.thread.start()
+
+    def run(self):
+        buffer_index = 0
+        client = hdfs.InsecureClient(self.url)
+        client.delete("/test", recursive=True)
+        client.makedirs("/test")
+        while True:
+            chunk = queue.get()
+            logging.info("sending chunk of %s bytes to hdfs ..." % len(chunk))
+            path = '/test/buffer_%s' % buffer_index
+            with client.write(path) as writer:
+                writer.write(chunk)
+            buffer_index += 1
+            queue.task_done()
+        logging.info("buffer_count=%s" % buffer_index)
+
+
 if __name__ == "__main__":
     # h = hpy()
 
@@ -166,6 +208,9 @@ if __name__ == "__main__":
         level=os.environ.get("LOGLEVEL", "INFO"),
         format='%(asctime)s %(levelname)-8s %(message)s',
     )
+
+    hdfs_sink_url = os.environ.get("HDFS_SINK_URL", "")
+    hdfs_path = os.environ.get("HDFS_PATH", "")
 
     queue_path = "/data/queue"
     temp_path = "/data/tmp"
@@ -178,9 +223,13 @@ if __name__ == "__main__":
     queue = Queue(queue_path, tempdir=temp_path)
     done = threading.Event()
 
-    source = HTTPSource(queue, done)
+    source = HTTPSource(queue, done, hdfs_sink_url, hdfs_path)
     sink = HTTPSink(queue, done)
     streaming_sink = TCPSink(queue, done)
+
+    #hdfs_sink_url = os.environ.get("HDFS_SINK_URL", "")
+    # if hdfs_sink_url:
+    #    hdfs_sink = HDFSSink(queue, hdfs_sink_url)
 
     # def signal_handler(signum, frame):
     #    logging.info('received signal %s' % signum)

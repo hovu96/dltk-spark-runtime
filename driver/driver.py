@@ -22,6 +22,15 @@ app = Flask(__name__)
 #    return jsonify(algo_result)
 
 
+def wait_until_relay_done(relay_url):
+    while True:
+        time.sleep(1)
+        status = get_status(relay_url)
+        if status == 410:
+            logging.info("queue status DONE")
+            break
+
+
 def receive_events_generator(relay_url):
     pull_url = urllib.parse.urljoin(relay_url, "pull")
     while True:
@@ -36,7 +45,7 @@ def receive_events_generator(relay_url):
                 time.sleep(1)
             else:
                 #response_content_type = response.headers["Content-Type"] if "Content-Type" in response.headers else ""
-                #if response_content_type != "application/json":
+                # if response_content_type != "application/json":
                 #    raise Exception("Unexpected content type: %s" % response_content_type)
                 response_bytes = response.read()
                 logging.info("received chunk of %s bytes" % len(response_bytes))
@@ -56,7 +65,7 @@ def receive_events(relay_url):
     return all_events
 
 
-def wait_for_relay(relay_url):
+def wait_for_relay_to_complete_startup(relay_url):
     ping_url = urllib.parse.urljoin(relay_url, "ping")
     retries = 0
     while True:
@@ -158,24 +167,45 @@ if __name__ == "__main__":
     input_mode = os.getenv("DLTK_INPUT_MODE")
     logging.info("DLTK_INPUT_MODE=%s" % input_mode)
     if input_mode == "batching":
-        wait_for_relay(inbound_relay_sink_url)
+        wait_for_relay_to_complete_startup(inbound_relay_sink_url)
         input_events = receive_events(inbound_relay_sink_url)
         logging.info("received %s events" % len(input_events))
         logging.info("calling algo method \"%s\"..." % algo_method_name)
         output_events = method_impl(spark_context, input_events)
         logging.info("algo returned %s events" % len(output_events))
-        wait_for_relay(outbound_relay_source_url)
+        wait_for_relay_to_complete_startup(outbound_relay_source_url)
         output_chunk(outbound_relay_source_url, output_events)
         logging.info("sent %s events to outbound relay" % len(output_events))
         close_output(outbound_relay_source_url)
         spark_context.stop()
     elif input_mode == "iterating":
-        wait_for_relay(inbound_relay_sink_url)
+        wait_for_relay_to_complete_startup(inbound_relay_sink_url)
         event_list_iterator = receive_events_generator(inbound_relay_sink_url)
         logging.info("calling algo method \"%s\"..." % algo_method_name)
         output_events = method_impl(spark_context, event_list_iterator)
         logging.info("algo returned %s events" % len(output_events))
-        wait_for_relay(outbound_relay_source_url)
+        wait_for_relay_to_complete_startup(outbound_relay_source_url)
+        output_chunk(outbound_relay_source_url, output_events)
+        logging.info("sent %s events to outbound relay" % len(output_events))
+        close_output(outbound_relay_source_url)
+        spark_context.stop()
+    elif input_mode == "hdfs":
+        wait_for_relay_to_complete_startup(inbound_relay_sink_url)
+        wait_until_relay_done(inbound_relay_sink_url)
+        hdfs_url_base = os.getenv("DLTK_HDFS_URL", "")
+        logging.info("DLTK_HDFS_URL=%s" % hdfs_url_base)
+        hdfs_path = os.getenv("DLTK_HDFS_PATH", "")
+        logging.info("DLTK_HDFS_PATH=%s" % hdfs_path)
+        hdfs_url = "%s/%s" % (
+            hdfs_url_base.strip("/"),
+            hdfs_path.strip("/"),
+        )
+        logging.info("final HDFS URL: %s" % hdfs_url)
+        input_records = spark_context.textFile(hdfs_url)
+        logging.info("calling algo method \"%s\"..." % algo_method_name)
+        output_events = method_impl(spark_context, input_records)
+        logging.info("algo returned %s events" % len(output_events))
+        wait_for_relay_to_complete_startup(outbound_relay_source_url)
         output_chunk(outbound_relay_source_url, output_events)
         logging.info("sent %s events to outbound relay" % len(output_events))
         close_output(outbound_relay_source_url)
@@ -203,16 +233,13 @@ if __name__ == "__main__":
         event_stream = input_stream.map(lambda line: json.loads(line))
         output_stream = method_impl(streaming_context, event_stream)
         send_stream(outbound_relay_source_url, output_stream)
-        wait_for_relay(inbound_relay_sink_url)
-        wait_for_relay(outbound_relay_source_url)
+        wait_for_relay_to_complete_startup(inbound_relay_sink_url)
+        wait_for_relay_to_complete_startup(outbound_relay_source_url)
         streaming_context.start()
+
         def wait_until_all_events_received():
-            while True:
-                time.sleep(1)
-                status = get_status(inbound_relay_sink_url)
-                if status == 410:
-                    logging.info("queue status DONE")
-                    break
+            wait_until_relay_done(inbound_relay_sink_url)
+
         def background_poller():
             wait_until_all_events_received()
             logging.info("waiting to finish up...")
