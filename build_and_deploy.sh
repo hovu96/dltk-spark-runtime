@@ -22,6 +22,6 @@ docker push hovu96/dltk-spark-runtime:relay
 docker build --rm -f "./inbound-relay/Dockerfile" -t hovu96/dltk-spark-runtime:inbound-relay .
 docker push hovu96/dltk-spark-runtime:inbound-relay
 
-# inbound-relay
-docker build --rm -f "./inbound-relay/Dockerfile" -t hovu96/dltk-spark-runtime:inbound-relay .
-docker push hovu96/dltk-spark-runtime:inbound-relay
+# outbound-relay
+docker build --rm -f "./outbound-relay/Dockerfile" -t hovu96/dltk-spark-runtime:outbound-relay .
+docker push hovu96/dltk-spark-runtime:outbound-relay
