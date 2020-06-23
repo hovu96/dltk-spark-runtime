@@ -51,7 +51,7 @@ class HTTPSink(object):
         chunk_count = self.chunk_count
         self.lock.release()
 
-        logging.info("HTTPSink: sending chunk %s (%s bytes) to Splunk ..." % (
+        logging.info("HTTPSink: will send chunk %s (%s bytes) to Splunk" % (
             chunk_count,
             chunk_size,
         ))

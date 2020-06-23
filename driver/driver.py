@@ -19,13 +19,12 @@ def read_chunks_from_relay(hostname):
     try:
         with s.makefile(mode="rb") as f:
             while True:
-                logging.info("reading size line...")
                 size_line = f.readline().decode()
                 if len(size_line) == 0:
-                    logging.info("no more chunks")
+                    logging.info("no more input chunks")
                     break
                 size = int(size_line)
-                logging.info("now reading %s bytes ..." % size)
+                logging.info("receiving chunk of %s bytes ..." % size)
                 data = f.read(size)
                 yield data
     finally:
@@ -65,7 +64,7 @@ def generate_lines_from_relay(hostname):
         for line in generate_lines_from_chunk(data):
             yield line
             line_count += 1
-    logging.info("buffer_count=%s line_count=%s" % (buffer_count, line_count))
+    logging.info("received %s chunks (%s events)" % (buffer_count, line_count))
 
 
 def generate_events_from_relay(spark_context, inbound_relay_hostname):
@@ -96,6 +95,13 @@ def send_chunks_to_relay(outbound_relay_hostname, chunk_iterator):
                 f.flush()
     finally:
         s.close()
+
+
+def send_rdd_to_relay(relay_hostname, rdd):
+    def send_partition(records):
+        events = [r for r in records]
+        send_chunks_to_relay(relay_hostname, [json.dumps(events).encode()])
+    rdd.foreachPartition(send_partition)
 
 
 def send_stream(relay_url, stream):
@@ -148,13 +154,13 @@ if __name__ == "__main__":
             hdfs_path = os.getenv("DLTK_HDFS_PATH", "")
             hdfs_url = "%s/%s" % (hdfs_url_base.strip("/"), hdfs_path.strip("/"))
             input_events = events_from_hdfs(spark_context, inbound_relay_sink, hdfs_url)
-            output_events = method_impl(spark_context, input_events)
+            output = method_impl(spark_context, input_events)
         elif backend_type == "buffer":
             input_events = generate_events_from_relay(spark_context, inbound_relay_sink)
-            output_events = method_impl(spark_context, input_events)
+            output = method_impl(spark_context, input_events)
         elif backend_type == "iterator":
             input_events_iterator = generate_event_chunks_from_relay(spark_context, inbound_relay_sink)
-            output_events = method_impl(spark_context, input_events_iterator)
+            output = method_impl(spark_context, input_events_iterator)
         else:
             raise Exception("unsupported rdd backend \"%s\"" % backend_type)
     elif input_type == "dstream":
@@ -162,12 +168,19 @@ if __name__ == "__main__":
     else:
         raise Exception("unsupported input type \"%s\"" % input_type)
 
-    # from pyspark.rdd import RDD
-    # if isinstance(x, RDD):
-    logging.info("algo returned %s events" % len(output_events))
     relay_status.wait_until_running(outbound_relay_hostname)
-    send_chunks_to_relay(outbound_relay_hostname, [json.dumps(output_events).encode()])
-    logging.info("sent %s events to outbound relay" % len(output_events))
+
+    from pyspark.rdd import RDD
+    if isinstance(output, RDD):
+        output_rdd = output
+        logging.info("sending output rdd to relay ...")
+        send_rdd_to_relay(outbound_relay_hostname, output_rdd)
+    else:
+        output_list = output
+        logging.info("algo returned %s events" % len(output_list))
+        send_chunks_to_relay(outbound_relay_hostname, [json.dumps(output_list).encode()])
+    logging.info("sent output to relay")
+    relay_status.signal_output_done(outbound_relay_hostname)
     spark_context.stop()
 
     # elif input_mode == "streaming":

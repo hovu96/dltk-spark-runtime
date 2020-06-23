@@ -4,8 +4,13 @@ import logging
 import time
 
 
-def get(relay_hostname):
+def get_url(relay_hostname):
     relay_url = "http://%s:82/" % relay_hostname
+    return relay_url
+
+
+def get(relay_hostname):
+    relay_url = get_url(relay_hostname)
     request = urllib.request.Request(relay_url, method="GET")
     try:
         response = urllib.request.urlopen(request)
@@ -52,3 +57,13 @@ def wait_until_running(relay_hostname):
             raise Exception("HTTPError: %s" % code)
         retries += 1
         time.sleep(1)
+
+
+def signal_output_done(relay_hostname):
+    relay_url = get_url(relay_hostname)
+    done_url = urllib.parse.urljoin(relay_url, "source_done")
+    request = urllib.request.Request(done_url, method="PUT")
+    try:
+        urllib.request.urlopen(request)
+    except urllib.error.HTTPError as e:
+        raise Exception("unexpected error: %s" % e)

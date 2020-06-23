@@ -18,7 +18,7 @@ if __name__ == "__main__":
     source_done = threading.Event()
     sink_done = threading.Event()
 
-    source = TCPSource(queue, source_done)
+    source = TCPSource(queue)
     sink = HTTPSink(queue, source_done)
     status_server = StatusServer(source_done, sink_done)
 

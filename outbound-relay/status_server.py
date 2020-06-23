@@ -15,7 +15,8 @@ class StatusServer(object):
 
     def run(self):
         app = Flask(__name__)
-        app.add_url_rule('/', view_func=self.handler, methods=["GET"])
+        app.add_url_rule('/', view_func=self.get_handler, methods=["GET"])
+        app.add_url_rule('/source_done', view_func=self.source_done_handler, methods=["PUT"])
         serve(
             app,
             host="0.0.0.0",
@@ -23,9 +24,13 @@ class StatusServer(object):
             threads=1,
         )
 
-    def handler(self):
+    def get_handler(self):
         if not self.source_done.is_set():
             return 'receiving', http.HTTPStatus.OK
         if not self.sink_done.is_set():
             return 'sending', http.HTTPStatus.OK
         return 'done', http.HTTPStatus.OK
+
+    def source_done_handler(self):
+        self.source_done.set()
+        return '', http.HTTPStatus.OK
