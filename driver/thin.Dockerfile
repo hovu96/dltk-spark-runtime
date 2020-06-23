@@ -20,5 +20,5 @@ COPY driver/aws-java-sdk-1.7.4.jar ${SPARK_JARS_DIR}
 # dltk driver server
 ENV DRIVER_DIR $DLTK_DIR/driver
 RUN mkdir -p $DRIVER_DIR
-COPY driver/*.py ${DRIVER_DIR}
+COPY driver/*.py ${DRIVER_DIR}/
 EXPOSE 8888

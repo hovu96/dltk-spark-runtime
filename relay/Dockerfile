@@ -14,7 +14,7 @@ RUN pip3 install --no-cache-dir -r ${RELAY_DIR}/requirements.txt
 COPY lib/ $RELAY_DIR/
 
 # copy relay sources
-COPY relay/*.py ${RELAY_DIR}
+COPY relay/*.py ${RELAY_DIR}/
 
 EXPOSE 8888 8889 8890
 WORKDIR $RELAY_DIR

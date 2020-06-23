@@ -27,6 +27,6 @@ ENV DLTK_EDITOR 1
 # jupyter editor
 ENV EDITOR_PATH $DLTK_DIR/editor
 RUN mkdir -p $EDITOR_PATH
-COPY editor/*.py ${EDITOR_PATH}
+COPY editor/*.py ${EDITOR_PATH}/
 EXPOSE 8888
 ENTRYPOINT python3 $EDITOR_PATH/main.py
