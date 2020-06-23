@@ -35,7 +35,7 @@ class HTTPSource(object):
         self.lock.acquire()
         self.total += len(data)
         self.lock.release()
-        logging.info("HTTPSource: received chunk of %s bytes (total bytes: %s)" % (len(data), self.total))
+        logging.info("HTTPSource: received chunk of %s bytes (accumulate to %s bytes)" % (len(data), self.total))
         self.queue.put(data)
         return '', http.HTTPStatus.OK
 
@@ -43,7 +43,7 @@ class HTTPSource(object):
         return '', http.HTTPStatus.OK
 
     def done_handler(self):
-        logging.info("HTTPSource: source is done (won't receive more data)")
+        logging.info("HTTPSource: done")
         self.queue.put(None)
         self.source_done.set()
         return '', http.HTTPStatus.OK

@@ -20,13 +20,13 @@ class TCPSource(object):
 
         class Handler(socketserver.StreamRequestHandler):
             def handle(self):
-                logging.info("TCPSource: client connected")
+                logging.info("TCPSource: Spark connected")
                 try:
                     while True:
                         logging.info("TCPSource: waiting for data...")
                         size_line = self.rfile.readline().decode()
                         if len(size_line) == 0:
-                            logging.info("TCPSource: done (won't receive more data)")
+                            logging.info("TCPSource: done")
                             source_done.set()
                             break
                         size = int(size_line)
@@ -37,7 +37,7 @@ class TCPSource(object):
                     err_msg = traceback.format_exc()
                     logging.error("TCPSource: error receiving data:\n%s" % err_msg)
                 finally:
-                    logging.info("TCPSource: client disconnected")
+                    logging.info("TCPSource: Spark disconnected")
 
         with socketserver.TCPServer(('0.0.0.0', 8888), Handler) as server:
             server.serve_forever()

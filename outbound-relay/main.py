@@ -22,11 +22,11 @@ if __name__ == "__main__":
     sink = HTTPSink(queue, source_done)
     status_server = StatusServer(source_done, sink_done)
 
-    logging.info("waiting until all data is received by source...")
+    logging.info("Main: waiting until all data is received by source...")
     source_done.wait()
-    logging.info("waiting until all data is sent by sink...")
+    logging.info("Main: waiting until all data is sent by sink...")
     queue.join()
-    logging.info("mark sink as done")
+    logging.info("Main: mark sink as done")
     sink_done.set()
 
     while True:

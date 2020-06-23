@@ -39,7 +39,7 @@ class HTTPSink(object):
             chunk = self.queue.get_nowait()
         except Empty:
             if self.source_done.is_set():
-                logging.info("pull -> GONE")
+                logging.info("HTTPSink: informed Splunk that there won't be more data")
                 return '', http.HTTPStatus.GONE
             return '', http.HTTPStatus.NO_CONTENT
 
@@ -51,7 +51,7 @@ class HTTPSink(object):
         chunk_count = self.chunk_count
         self.lock.release()
 
-        logging.info("HTTPSink: sending chunk %s (%s bytes) to Splunk" % (
+        logging.info("HTTPSink: sending chunk %s (%s bytes) to Splunk ..." % (
             chunk_count,
             chunk_size,
         ))

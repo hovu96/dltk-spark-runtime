@@ -1,131 +1,15 @@
 from pyspark import SparkContext
 from pyspark.streaming import StreamingContext
 from pyspark.streaming.listener import StreamingListener
-from waitress import serve
-from flask import Flask, jsonify
 import os
 import logging
 import time
-import urllib
 import http
 import json
 import threading
 import socket
 import io
-
-app = Flask(__name__)
-
-
-# @app.route('/execute/<method>', methods=['POST'])
-# def execute(method):
-#    import algo_code
-#    method_impl = getattr(algo_code, method)
-#    algo_result = method_impl(sc)
-#    return jsonify(algo_result)
-
-
-def wait_until_relay_done(relay_url):
-    while True:
-        time.sleep(1)
-        status = get_status(relay_url)
-        if status == 410:
-            logging.info("queue status DONE")
-            break
-
-
-def receive_events_generator(relay_url):
-    pull_url = urllib.parse.urljoin(relay_url, "pull")
-    while True:
-        try:
-            request = urllib.request.Request(
-                pull_url,
-                method="POST",
-                headers={}
-            )
-            response = urllib.request.urlopen(request)
-            if response.getcode() == 204:
-                time.sleep(1)
-            else:
-                # response_content_type = response.headers["Content-Type"] if "Content-Type" in response.headers else ""
-                # if response_content_type != "application/json":
-                #    raise Exception("Unexpected content type: %s" % response_content_type)
-                response_bytes = response.read()
-                logging.info("received chunk of %s bytes" % len(response_bytes))
-                yield response_bytes
-        except http.client.RemoteDisconnected as e:
-            raise Exception("Inbound relay closed connection: %s" % e)
-        except urllib.error.HTTPError as e:
-            if e.code == 410:
-                return
-            raise Exception("Inbound relay HTTP error: %s" % e.code)
-
-
-def receive_events(relay_url):
-    all_events = []
-    for events in receive_events_generator(relay_url):
-        all_events.extend(events)
-    return all_events
-
-
-def get_relay_status(relay_hostname):
-    relay_url = "http://%s:82/" % relay_hostname
-    #logging.info("calling %s ..." % relay_url)
-    request = urllib.request.Request(relay_url, method="GET")
-    try:
-        response = urllib.request.urlopen(request)
-        response_bytes = response.read()
-        response_text = response_bytes.decode()
-        response_text, response.getcode()
-        status, code = response_text, response.getcode()
-    except urllib.error.HTTPError as e:
-        status, code = "", e.code
-    #logging.info("result %s (%s)" % (status, code))
-    return status, code
-
-
-def wait_for_relay_status(relay_hostname, target_status):
-    logging.info("waiting for relay status '%s' ..." % target_status)
-    retries = 0
-    while True:
-        status, code = get_relay_status(relay_hostname)
-        if code != 200:
-            raise Exception("HTTPError: %s" % code)
-        if status != target_status:
-            if retries > 600:
-                raise Exception("Error sending ping: %s" % code)
-        else:
-            break
-        retries += 1
-        time.sleep(1)
-
-
-def wait_for_relay_running(relay_hostname):
-    logging.info("waiting for relay %s running ..." % (relay_hostname))
-    retries = 0
-    while True:
-        _, code = get_relay_status(relay_hostname)
-        if code == 200:
-            break
-        if code == 404 or code == 503 or code == 502 or code == 504:
-            if retries > 600:
-                raise Exception("Error sending ping: %s" % code)
-        else:
-            raise Exception("HTTPError: %s" % code)
-        retries += 1
-        time.sleep(1)
-
-
-def get_status(relay_url):
-    status_url = urllib.parse.urljoin(relay_url, "status")
-    request = urllib.request.Request(
-        status_url,
-        method="GET",
-    )
-    try:
-        response = urllib.request.urlopen(request)
-        return response.getcode()
-    except urllib.error.HTTPError as e:
-        return e.code
+import relay_status
 
 
 def read_chunks_from_relay(hostname):
@@ -164,7 +48,7 @@ def distribute_and_parse_lines(spark_context, line_iterator):
 
 
 def generate_event_chunks_from_relay(spark_context, inbound_relay_hostname):
-    wait_for_relay_running(inbound_relay_hostname)
+    relay_status.wait_until_running(inbound_relay_hostname)
     buffer_count = 0
     for data in read_chunks_from_relay(inbound_relay_hostname):
         buffer_count += 1
@@ -185,14 +69,14 @@ def generate_lines_from_relay(hostname):
 
 
 def generate_events_from_relay(spark_context, inbound_relay_hostname):
-    wait_for_relay_running(inbound_relay_hostname)
+    relay_status.wait_until_running(inbound_relay_hostname)
     line_iterator = generate_lines_from_relay(inbound_relay_hostname)
     return distribute_and_parse_lines(spark_context, line_iterator)
 
 
 def events_from_hdfs(spark_context, inbound_relay_hostname, hdfs_url):
-    wait_for_relay_running(inbound_relay_hostname)
-    wait_for_relay_status(inbound_relay_hostname, "done")
+    relay_status.wait_until_running(inbound_relay_hostname)
+    relay_status.wait_until_done(inbound_relay_hostname)
     lines = spark_context.textFile(hdfs_url)
     events = parse_events_from_lines(lines)
     return events
@@ -281,7 +165,7 @@ if __name__ == "__main__":
     # from pyspark.rdd import RDD
     # if isinstance(x, RDD):
     logging.info("algo returned %s events" % len(output_events))
-    wait_for_relay_running(outbound_relay_hostname)
+    relay_status.wait_until_running(outbound_relay_hostname)
     send_chunks_to_relay(outbound_relay_hostname, [json.dumps(output_events).encode()])
     logging.info("sent %s events to outbound relay" % len(output_events))
     spark_context.stop()
@@ -313,7 +197,7 @@ if __name__ == "__main__":
     #    wait_for_relay_to_complete_startup(outbound_relay_source_url)
     #    streaming_context.start()##
     #    def wait_until_all_events_received():
-    #        wait_until_relay_done(inbound_relay_sink_url)
+    #        wait_for_relay_status(inbound_relay_sink_url, "done")
     #    def background_poller():
     #        wait_until_all_events_received()
     #        logging.info("waiting to finish up...")

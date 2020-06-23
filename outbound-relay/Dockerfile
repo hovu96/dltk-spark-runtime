@@ -1,7 +1,5 @@
 FROM python:3
 
-VOLUME [ "/data" ]
-
 # relay folder
 ENV RELAY_DIR /relay
 RUN mkdir -p $RELAY_DIR

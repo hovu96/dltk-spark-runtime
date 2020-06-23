@@ -18,17 +18,17 @@ class TCPSink(object):
 
         class TCPSinkHandler(socketserver.StreamRequestHandler):
             def handle(self):
-                logging.info("TCPSink: client connected")
+                logging.info("TCPSink: Spark connected")
                 try:
                     while True:
-                        logging.info("TCPSink: waiting for next chunk in queue ...")
+                        logging.info("TCPSink: waiting for chunk in queue ...")
                         data = queue.get()
                         if data is None:
-                            logging.info("TCPSink: done -> stopping client connection")
+                            logging.info("TCPSink: done")
                             queue.task_done()
                             break
                         chunk_size = len(data)
-                        logging.info("TCPSink: sending chunk (of %s bytes) ..." % chunk_size)
+                        logging.info("TCPSink: sending chunk of %s bytes to Spark ..." % chunk_size)
                         self.wfile.write(("%s\n" % chunk_size).encode())
                         self.wfile.write(data)
                         self.wfile.flush()
@@ -37,7 +37,7 @@ class TCPSink(object):
                     err_msg = traceback.format_exc()
                     logging.error("TCPSink: error sending data:\n%s" % err_msg)
                 finally:
-                    logging.info("TCPSink: client disconnected")
+                    logging.info("TCPSink: Spark disconnected")
 
         with socketserver.TCPServer(('0.0.0.0', 8890), TCPSinkHandler) as server:
             server.serve_forever()
