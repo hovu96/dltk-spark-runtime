@@ -38,6 +38,7 @@ class NotebookHandler(tornado.web.RequestHandler):
         except FileNotFoundError:
             version = -1
         if source is None:
+            logging.info("no algo source code found")
             self.set_status(404)
             return
         self.set_header('X-Notebook-Version', version)
@@ -46,6 +47,13 @@ class NotebookHandler(tornado.web.RequestHandler):
     def put(self):
         version = self.request.headers['X-Notebook-Version']
         source = self.request.body.decode()
+        logging.info("received new source code (version %s)" % version)
+        try:
+            json.loads(source)
+        except:
+            logging.warning("could not parse source as json (\"%s\")" % source)
+            self.set_status(400, reason="invalid source code json")
+            return
         with open(notebook_file_path, "w") as f:
             f.write(source)
         with open(notebook_version_file, "w") as f:
@@ -57,13 +65,23 @@ class DeploymentHandler(tornado.web.RequestHandler):
         pass
 
     def get(self):
+        if not os.path.exists(notebook_file_path):
+            logging.info("cannot generate deployment code as source file doesn exists: %s" % notebook_file_path)
+            self.set_status(404)
+            return
         with open(notebook_file_path, 'r') as f:
             model_content = json.load(f)
         model = {
             "type": "notebook",
             "content": model_content,
         }
-        deployment_code = generate_deployment_code(model)
+        try:
+            deployment_code = generate_deployment_code(model)
+        except Exception as e:
+            logging.info("source model: %s" % model)
+            logging.warning("error generating deployment code from model: %s" % e)
+            self.set_status(500, reason="error generating deployment code: %s" % e)
+            pass
         self.write(deployment_code)
 
 
@@ -126,12 +144,17 @@ class App(jupyterlab_server.LabServerApp):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=os.environ.get("LOGLEVEL", "INFO"),
+        format='%(asctime)s %(levelname)-8s %(message)s',
+    )
+
     App.launch_instance(
         port=os.getenv('PORT', 8888),
         open_browser=False,
         root_dir=notebook_dir,
         allow_root=True,
-        default_url=base_url_path+"notebooks/%s" % notebook_name,
+        default_url=base_url_path + "notebooks/%s" % notebook_name,
         base_url=base_url_path,
         # debug=False,
         token="",
