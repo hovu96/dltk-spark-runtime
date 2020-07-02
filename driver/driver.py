@@ -19,6 +19,7 @@ def read_chunks_from_relay(hostname):
     try:
         with s.makefile(mode="rb") as f:
             while True:
+                logging.info("waiting for new chunk ... ")
                 size_line = f.readline().decode()
                 if len(size_line) == 0:
                     logging.info("no more input chunks")
