@@ -60,6 +60,14 @@ class NotebookHandler(tornado.web.RequestHandler):
             f.write(version)
 
 
+class PingHandler(tornado.web.RequestHandler):
+    def check_xsrf_cookie(self):
+        pass
+
+    def get(self):
+        self.set_status(200)
+
+
 class DeploymentHandler(tornado.web.RequestHandler):
     def check_xsrf_cookie(self):
         pass
@@ -136,6 +144,7 @@ class DaskFileManager(LargeFileManager):
 class App(jupyterlab_server.LabServerApp):
     def start(self):
         self.web_app.add_handlers('.*$', [
+            (r".*/_dltk/ping", PingHandler),
             (r".*/_dltk/notebook", NotebookHandler),
             (r".*/_dltk/algo_code", DeploymentHandler),
             (r".*/_dltk/algo_code\.py", DeploymentHandler),
